@@ -6,8 +6,6 @@ import psycopg
 import traceback
 import argparse
 
-CONNECTION_SETTINGS_FILE_NAME = 'connection.json'
-
 default_connection_settings = lambda : {
     'host': '',
     'port': 5432,
@@ -79,8 +77,18 @@ def load_scenarios_from_file(file_path):
 def parse_args():
     parser = argparse.ArgumentParser(description='execute psql templated sql for scenarios')
 
-    parser.add_argument(f'--template', help='path to psql template file', required=True)
-    parser.add_argument(f'--scenarios', help='path to csv scenarios file', required=True)
+    parser.add_argument(f'--connection',
+        help='path to json connection file',
+        default='connection.json',
+        required=True)
+    
+    parser.add_argument(f'--template',
+        help='path to psql template file',
+        required=True)
+    
+    parser.add_argument(f'--scenarios',
+        help='path to json scenarios file',
+        required=True)
 
     return vars(parser.parse_args())
 
@@ -94,21 +102,24 @@ def entrypoint():
     scenarios_file_path = args['scenarios']
     scenarios = load_scenarios_from_file(scenarios_file_path)
 
+    connection_file_path = args['connection']
+    exec_scalar_sql = new_scalar_psql_executor(connection_file_path)
+    if not exec_scalar_sql:
+        print('error executing sql')
+        return False
+
     for scenario in scenarios:
 
         rendered_sql = template
         for key, value in scenario.items():
             rendered_sql = rendered_sql.replace('{' + key + '}', value)
 
-        exec_scalar_sql = new_scalar_psql_executor(CONNECTION_SETTINGS_FILE_NAME)
-        if not exec_scalar_sql:
-            print('config error')
-            return
-
         successful = exec_scalar_sql(rendered_sql)
         if not successful:
             print(f'scalar sql execution failed for scenario: {scenario}')
-            return
+            return False
+        
+    return True
 
 if __name__ == '__main__':
     entrypoint()
